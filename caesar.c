@@ -23,11 +23,11 @@ int main(int argc, string argv[])
     {
      if (isupper (s[i]))
      {
-        printf("%c", ((((s[i] - 65) +k) %26) +65));
+        printf("%c", ((((s[i] - 'A') +k) %26) +'A'));
      }
      else
      {
-        printf("%c", ((((s[i] - 97) +k) %26) +97));
+        printf("%c", ((((s[i] - 'a') +k) %26) +'a'));
      }
     }
     else
