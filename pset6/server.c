@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <ctype.h>
 
 // types
 typedef char BYTE;
@@ -95,7 +96,7 @@ int main(int argc, char* argv[])
 
             // -p port
             case 'p':
-                port = atoi(optarg);                                                                                                // erro arg a mais
+                port = atoi(optarg);
                 break;
         }
     }
@@ -203,7 +204,7 @@ int main(int argc, char* argv[])
                     strcpy(path, root);
                     strcat(path, p);
                     free(p);
-                    
+
                     // ensure path exists
                     if (access(path, F_OK) == -1)
                     {
@@ -228,7 +229,7 @@ int main(int argc, char* argv[])
                         // use path/index.php or path/index.html, if present, instead of directory's path
                         char* index = indexes(path);
                         if (index != NULL)
-                       {
+                        {
                             free(path);
                             path = index;
                         }
@@ -444,8 +445,32 @@ char* htmlspecialchars(const char* s)
  */
 char* indexes(const char* path)
 {
-    // TODO
-    return NULL;
+    char str[strlen(path) + 9];
+    strcpy(str , path);
+    strcat(str , "index.php");
+    FILE* php = fopen(str , "r");
+    
+    char str2[strlen(path) + 10];
+    strcpy(str2 , path);
+    strcat(str2 , "index.html");
+    FILE* html = fopen(str2 , "r");
+
+    if(php != NULL)
+    {
+        char* result = malloc(sizeof(char) * strlen(str));
+        strcpy(result , str);
+        return result;
+    }
+    else if(html != NULL)
+    {
+        char* result2 = malloc(sizeof(char) * strlen(str2));
+        strcpy(result2 , str2);
+        return result2;
+    }
+    else
+    {
+       return NULL;
+    }
 }
 
 /**
@@ -609,8 +634,26 @@ void list(const char* path)
  */
 bool load(FILE* file, BYTE** content, size_t* length)
 {
-    // TODO
-    return false;
+    if(file == NULL)
+    {
+        return false;
+    }
+    else
+    {
+        BYTE* buffer = malloc(sizeof(BYTE));
+        
+        int i = 0;
+        for(int c = fgetc(file) ; c != EOF ; c = fgetc(file))
+        {
+            buffer[i] = c;
+            i++;
+            buffer = realloc(buffer , sizeof(BYTE)*(i+1));
+        }
+        *content = &buffer[0];
+        *length = i;
+        return true;
+    }
+    
 }
 
 /**
@@ -618,24 +661,16 @@ bool load(FILE* file, BYTE** content, size_t* length)
  */
 const char* lookup(const char* path)
 {
-    if (strcasestr (path, ".css") != NULL)
-        return "text/css";
-    else if (strcasestr (path, ".html") != NULL)
-        return "text/html";
-    else if (strcasestr (path, ".gif") != NULL)
-        return "image/gif";
-    else if (strcasestr (path, ".ico") != NULL)
-        return "image/x-icon";
-    else if (strcasestr (path, ".jpg") != NULL)
-        return "image/jpeg";
-    else if (strcasestr (path, ".js") != NULL)
-        return "text/javascript";
-    else if (strcasestr (path, ".php") != NULL)
-        return "text/x-php";
-    else if (strcasestr (path, ".png") != NULL)
-        return "image/png";
-    else
-        return NULL;
+    char* ext = strrchr(path , '.');
+    if(strcasecmp(ext , ".html") == 0) return "text/html";
+    else if(strcasecmp(ext , ".css") == 0) return "text/css";
+    else if(strcasecmp(ext , ".php") == 0) return "text/x-php";
+    else if(strcasecmp(ext , ".js") == 0) return "text/javascript";
+    else if(strcasecmp(ext , ".jpg") == 0) return "image/jpeg";
+    else if(strcasecmp(ext , ".png") == 0) return "image/png";
+    else if(strcasecmp(ext , ".ico") == 0) return "image/x-icon";
+    else if(strcasecmp(ext , ".gif") == 0) return "image/gif";
+    else return NULL;
 }
 
 /**
@@ -645,102 +680,97 @@ const char* lookup(const char* path)
  */
 bool parse(const char* line, char* abs_path, char* query)
 {
-    // check for the method, to see if it is GET
-    if (strncmp ("GET ", line, 4))
+
+    // parsing the request line and sepreate it to part1 and part2
+    // part1 (everything from line after the first SP)
+    // part2 (everything from line after the second SP)
+    char* part1 = strchr(line , ' ');
+    char* part2 = strrchr(line , ' ');
+     
+    // size of request target should be part1 - part2
+    int size = strlen(part1) - strlen(part2);
+    
+    // allocat memory fro request target and remember it exluding everything after second SP
+    char* requestTarget = malloc(sizeof(char)*size);
+    for(int i = 0 ; i < size;i++)
     {
+        requestTarget[i] = part1[i];
+        if(i == size - 1) requestTarget[i+1] = '\0';
+    }
+    
+    // slice everything after a ? from request target 
+    char* part3 = strchr(requestTarget , '?');
+    
+    if(part3 != NULL)
+    {
+        int part3Len = strlen(part3);
+        if(part3Len == 1) query[0] = '\0';
+        else
+        {
+            // store query
+            for(int i = 1 ; i < part3Len ;i++)
+            {
+                if(i == part3Len-1) query[i] = '\0';
+                query[i-1] = part3[i]; 
+            } 
+        }
+        size -= part3Len;
+        
+    }
+    else query[0] = '\0';
+    
+    // store abs_path
+    for(int i = 1 ; i < size;i++)
+    {
+        if(i == size-1) abs_path[i] = '\0';
+        abs_path[i-1] = requestTarget[i];
+    }
+    
+    // this used to check for CRLF
+    char* crlf = strchr(part2 , '\r');
+    
+    // validate the whole rquest
+    if(part1 == NULL || part2 == NULL)
+    {
+        free(requestTarget);
+        error(400);
+        return false;
+    }
+    else if(strncmp(line , "GET " , 4) != 0)
+    {
+        free(requestTarget);
         error(405);
         return false;
     }
-    
-    // allocate memory for the pointer and test if it was
-    char* absolutePath = malloc (strlen(line) * sizeof(char));
-    if (absolutePath == NULL)
+    else if(strncmp(requestTarget , " /" , 2) != 0)
     {
-        error(404);
-        return false;
-    }
-    
-    // truncate the line by the first space delimiter
-    absolutePath = strchr (line, ' ');
-    
-    // allocate memory for the pointer and test if it was
-    char* httpString = malloc (11 * sizeof(char));
-    if (httpString == NULL)
-    {
+        free(requestTarget);
         error(501);
         return false;
     }
-    
-    // truncate the previous truncated line to get the HTTP version
-    httpString = strrchr (absolutePath, ' ');
-    
-    // check if there is a quote mark in the request-line
-    if (strstr (absolutePath, "\"") != NULL)
+    else if(strchr(requestTarget , '"') != NULL)
     {
-            error (400);
-            return false;
-    }
-    
-    // check if ther is a slash at the beguinning of request-path
-    if (absolutePath[1] != 47)
-    {
-        error(501);
+        free(requestTarget);
+        error(400);
         return false;
     }
-    
-    // compare the http version to HTTP/1.1
-    char finalHTTP[9];
-    strncpy(finalHTTP, httpString + 1, 8);
-    finalHTTP[8] = 0;
-    if (strcmp (finalHTTP, "HTTP/1.1") != 0)
+    else if(strncmp(part2 , " HTTP/1.1", 9) != 0)
     {
+        free(requestTarget);
         error(505);
         return false;
     }
-    
-    // seprarate path from query in the request
-    for (short i = 1; i <= strlen(absolutePath); i++)
+    else if(crlf != NULL && strstr(crlf , "\r\n") == NULL)
     {
-        if (absolutePath[i] != '?' && absolutePath[i] != ' ')
-        {
-            abs_path[i-1] = absolutePath[i];
-        }
-        else
-            break;
-    }
-    
-    // allocate memory for the pointer and test if it was
-    char* rawQuery = malloc (strlen(line) * sizeof(char));
-    if (rawQuery == NULL)
-    {
-        error(500);
+        free(requestTarget);
+        error(400);
         return false;
     }
-    
-    // If there is a ? then substring it
-    if (strchr (absolutePath, '?') != NULL)
-    {
-        // if it is only a ? then return "" else return everything after it
-        rawQuery = strstr (absolutePath, "?");
-        short index = 1;
-        
-        while (rawQuery[index] != ' ')
-        {
-            query[index-1] = rawQuery[index];
-            index++;
-        }
-        
-        if (strlen(query) == 0)
-        {
-            query = "";
-        }
-    }
     else
-        query = "";
-        
-    // read query from ? to the next space
-    
-    return true;
+    {
+        free(requestTarget);
+        return true;
+    }
 }
 
 /**
